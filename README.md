@@ -27,6 +27,32 @@ uvicorn app:app --reload
 Visit `http://127.0.0.1:8000` in your browser to test the default endpoint. You can explore the interactive API documentation at `http://127.0.0.1:8000/docs`.
 
 
+## Running the API
+
+1. Make sure you have all dependencies installed:
+```bash
+pip install fastapi uvicorn pandas openpyxl
+```
+
+2. To run the API in development mode with auto-reload:
+```bash
+uvicorn v1.app:app --reload
+```
+
+Note: The command structure is `uvicorn [module_path]:[fastapi_instance_name] --reload`
+- `v1.app` refers to the `app.py` file in the `v1` directory
+- `app` refers to the FastAPI instance created in that file
+- `--reload` enables auto-reloading when code changes
+
+The API will be available at:
+- Local: http://127.0.0.1:8000
+- API documentation: http://127.0.0.1:8000/docs
+
+## Available Endpoints
+
+- `GET /` - Root endpoint (Hello World)
+- `GET /v1/country-data/{country}/{assessment_year}` - Get country assessment data
+
 ## Collaborator Access
 
 Students who are currently enrolled in the DS205 course (or auditing) are eligible to contribute to this repository. To be granted push permission on this repository, please send a message to Jon on Slack with your GitHub username. Once approved, you'll receive an invite to contribute.
