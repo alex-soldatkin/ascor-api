@@ -1,14 +1,8 @@
 import os
 import pandas as pd
 
-from typing import List
-
 from fastapi import FastAPI, HTTPException
-
-from .models import CountryData, Metric
-from utils import get_data_path  # Changed from relative to absolute import
-
-df_assessments = pd.read_excel(os.path.join(get_data_path(), "ASCOR_assessments_results.xlsx"))
+df_assessments = pd.read_excel("./data/TPI ASCOR data - 13012025/ASCOR_assessments_results.xlsx")
 df_assessments['Assessment date'] = pd.to_datetime(df_assessments['Assessment date'])
 df_assessments['Publication date'] = pd.to_datetime(df_assessments['Publication date'])
 
@@ -35,33 +29,87 @@ else:
 async def read_root():
     return {"Hello": "World"}
 
-@app.get("/country-data/{country}/{assessment_year}", response_model=CountryData)
+@app.get("/v1/country-data/{country}/{assessment_year}")
 async def get_country_data(country: str, assessment_year: int):
-    selected_row = (
-        (df_assessments["Country"] == country) &
-        (df_assessments['Assessment date'].dt.year == assessment_year)
-    )
 
-    data = df_assessments[selected_row]
+#    # Silly non-data-driven response for now
+#     return {"message": f"You requested data for {country} in {assessment_year}. Eventually, we will return the data here."}
+    """
+    Get the data for a specific country and assessment year. 
+    """
+    # First validate inputs
+    if not country or not assessment_year:
+        raise HTTPException(
+            status_code=400,
+            detail="Both country and year must be provided"
+        )
 
-    if data.empty:
-        raise HTTPException(status_code=404, 
-                            detail=f"There is no data for country: {country} and year: {assessment_year}")
+    try:
+        # Check if country exists first
+        if country not in df_assessments['Country'].unique():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Country '{country}' not found in dataset"
+            )
+        
+        # Check if year exists for this country
+        country_years = df_assessments[df_assessments['Country'] == country]['Assessment date'].dt.year.unique()
+        if assessment_year not in country_years:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No data found for country '{country}' in year {assessment_year}"
+            )
 
-    area_columns = [col for col in df_assessments.columns if col.startswith("area")]
-    data = data[area_columns]
-    data = data.fillna('')
+        # Filter the data
+        mask = (df_assessments['Country'] == country) & (df_assessments['Assessment date'].dt.year == assessment_year)
+        data = df_assessments[mask]
 
-    data['country'] = country
-    data['assessment_year'] = assessment_year
+        if data.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No data found for country '{country}' in year {assessment_year}"
+            )
 
-    remap_area_column_names = {
-        col: col.replace('area ', '').replace('.', '_')
-        for col in area_columns
-    }
+        # Get area columns
+        area_columns = [col for col in df_assessments.columns if col.startswith('area')]
+        if not area_columns:
+            raise HTTPException(
+                status_code=500,
+                detail="No area columns found in dataset"
+            )
 
-    data = data.rename(columns=remap_area_column_names)
-    output_dict = data.iloc[0].to_dict()
-    output = CountryData(**output_dict)
+        # Create result DataFrame
+        result = data[area_columns].copy()
+        if len(result) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No area data found for country '{country}' in year {assessment_year}"
+            )
 
-    return output
+        # Add metadata and clean up
+        result['country'] = country
+        result['assessment_year'] = assessment_year
+        result = result.fillna('')
+        result.rename(columns=lambda x: x.replace('area ', ''), inplace=True)
+
+        # Get first row safely
+        if len(result) > 0:
+            return result.iloc[0].to_dict()
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No data found for country '{country}' in year {assessment_year}"
+            )
+
+    except HTTPException:
+        raise
+    except IndexError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for country '{country}' in year {assessment_year}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
